@@ -212,6 +212,7 @@ public:
     void setInputDispatchMode(bool enabled, bool frozen);
     void setSystemUiVisibility(int32_t visibility);
     void setPointerSpeed(int32_t speed);
+    void setForceMouseAsTouch(bool forceMouseAsTouch);
     void setInputDeviceEnabled(uint32_t deviceId, bool enabled);
     void setShowTouches(bool enabled);
     void setVolumeKeysRotation(int mode);
@@ -287,6 +288,9 @@ private:
         // Pointer speed.
         int32_t pointerSpeed;
 
+        // Force mouse events to be handled as touch event.
+        bool forceMouseAsTouch;
+
         // True if pointer gestures are enabled.
         bool pointerGesturesEnabled;
 
@@ -339,6 +343,7 @@ NativeInputManager::NativeInputManager(jobject contextObj,
         AutoMutex _l(mLock);
         mLocked.systemUiVisibility = ASYSTEM_UI_VISIBILITY_STATUS_BAR_VISIBLE;
         mLocked.pointerSpeed = 0;
+        mLocked.forceMouseAsTouch = false;
         mLocked.pointerGesturesEnabled = true;
         mLocked.showTouches = false;
         mLocked.pointerCapture = false;
@@ -368,6 +373,7 @@ void NativeInputManager::dump(std::string& dump) {
         dump += StringPrintf(INDENT "System UI Visibility: 0x%0" PRIx32 "\n",
                 mLocked.systemUiVisibility);
         dump += StringPrintf(INDENT "Pointer Speed: %" PRId32 "\n", mLocked.pointerSpeed);
+        dump += StringPrintf(INDENT "Force Mouse As Touch: %s\n", toString(mLocked.forceMouseAsTouch));
         dump += StringPrintf(INDENT "Pointer Gestures Enabled: %s\n",
                 toString(mLocked.pointerGesturesEnabled));
         dump += StringPrintf(INDENT "Show Touches: %s\n", toString(mLocked.showTouches));
@@ -535,6 +541,7 @@ void NativeInputManager::getReaderConfiguration(InputReaderConfiguration* outCon
 
         outConfig->pointerVelocityControlParameters.scale = exp2f(mLocked.pointerSpeed
                 * POINTER_SPEED_EXPONENT);
+        outConfig->forceMouseAsTouch = mLocked.forceMouseAsTouch;
         outConfig->pointerGesturesEnabled = mLocked.pointerGesturesEnabled;
 
         outConfig->showTouches = mLocked.showTouches;
@@ -835,6 +842,23 @@ void NativeInputManager::setPointerSpeed(int32_t speed) {
     mInputManager->getReader()->requestRefreshConfiguration(
             InputReaderConfiguration::CHANGE_POINTER_SPEED);
 }
+
+void NativeInputManager::setForceMouseAsTouch(bool forceMouseAsTouch) {
+    { // acquire lock
+        AutoMutex _l(mLock);
+
+        if (mLocked.forceMouseAsTouch == forceMouseAsTouch) {
+            return;
+        }
+
+        ALOGI("Setting force mouse as touch to %s.", toString(forceMouseAsTouch));
+        mLocked.forceMouseAsTouch = forceMouseAsTouch;
+    } // release lock
+
+    mInputManager->getReader()->requestRefreshConfiguration(
+            InputReaderConfiguration::CHANGE_FORCE_MOUSE_AS_TOUCH);
+}
+
 
 void NativeInputManager::setInputDeviceEnabled(uint32_t deviceId, bool enabled) {
     { // acquire lock
@@ -1619,6 +1643,13 @@ static void nativeSetPointerSpeed(JNIEnv* /* env */,
     im->setPointerSpeed(speed);
 }
 
+static void nativeSetForceMouseAsTouch(JNIEnv* /* env */,
+        jclass /* clazz */, jlong ptr, jboolean forceMouseAsTouch) {
+    NativeInputManager* im = reinterpret_cast<NativeInputManager*>(ptr);
+
+    im->setForceMouseAsTouch(forceMouseAsTouch);
+}
+
 static void nativeSetShowTouches(JNIEnv* /* env */,
         jclass /* clazz */, jlong ptr, jboolean enabled) {
     NativeInputManager* im = reinterpret_cast<NativeInputManager*>(ptr);
@@ -1817,6 +1848,7 @@ static const JNINativeMethod gInputManagerMethods[] = {
         {"nativeTransferTouchFocus", "(JLandroid/os/IBinder;Landroid/os/IBinder;)Z",
          (void*)nativeTransferTouchFocus},
         {"nativeSetPointerSpeed", "(JI)V", (void*)nativeSetPointerSpeed},
+        {"nativeSetForceMouseAsTouch", "(JZ)V", (void*)nativeSetForceMouseAsTouch},        
         {"nativeSetShowTouches", "(JZ)V", (void*)nativeSetShowTouches},
         {"nativeSetVolumeKeysRotation", "(JI)V", (void*)nativeSetVolumeKeysRotation},
         {"nativeSetInteractive", "(JZ)V", (void*)nativeSetInteractive},
